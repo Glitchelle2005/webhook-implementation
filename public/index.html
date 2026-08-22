@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solstice Events Co. — Async Badge Check-In Kiosk</title>
+  <meta name="description"
+    content="Asynchronous badge printing kiosk service with message queue, state machine, idempotency, and HMAC-signed webhook delivery for Solstice Events Co.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <!-- Ambient background glow -->
+  <div class="glow-orb glow-orb-1"></div>
+  <div class="glow-orb glow-orb-2"></div>
+  <div class="glow-orb glow-orb-3"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="logo-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2"></path>
+            <path d="M12 20v2"></path>
+            <path d="m4.93 4.93 1.41 1.41"></path>
+            <path d="m17.66 17.66 1.41 1.41"></path>
+            <path d="M2 12h2"></path>
+            <path d="M20 12h2"></path>
+            <path d="m6.34 17.66-1.41 1.41"></path>
+            <path d="m19.07 4.93-1.41 1.41"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">SOLSTICE EVENTS CO.</h1>
+          <p class="brand-subtitle">Async Badge Check-In Kiosk & Hardware Gateway</p>
+        </div>
+      </div>
+
+      <div class="header-status">
+        <div class="status-pill polling-status" id="pollingIndicator">
+          <span class="pulse-dot"></span>
+          <span id="pollingText">Polling Ready</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btnResetSystem" title="Reset all state to initial seeds">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+            <path d="M3 3v5h5"></path>
+          </svg>
+          Reset All
+        </button>
+      </div>
+    </header>
+
+    <!-- Architecture Banner & Mode Selector -->
+    <div class="architecture-pill-banner">
+      <div class="arch-tag">
+        <span class="tag-badge">Async Architecture</span>
+        <span class="tag-text">Scan Request ➔ Queue ➔ Mock Hardware Worker ➔ HMAC Webhook ➔ State Machine CAS</span>
+      </div>
+      <div class="arch-metrics">
+        <span class="metric-item"><strong>Idempotency:</strong> Job UUID</span>
+        <span class="metric-item"><strong>Signature:</strong> HMAC-SHA256</span>
+      </div>
+    </div>
+
+    <!-- Main Grid Layout -->
+    <main class="dashboard-grid">
+
+      <!-- Left Column: Scan Station & Interactive Simulation -->
+      <section class="panel panel-scanner">
+        <div class="panel-header">
+          <div class="panel-title-wrap">
+            <span class="panel-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <path d="M7 7h.01"></path>
+                <path d="M17 7h.01"></path>
+                <path d="M7 17h.01"></path>
+                <path d="M17 17h.01"></path>
+              </svg>
+            </span>
+            <h2>Kiosk Scanner Station</h2>
+          </div>
+          <span class="badge-accent">Station #04</span>
+        </div>
+
+        <!-- Scanner Simulation Box -->
+        <div class="scanner-box" id="scannerVisual">
+          <div class="laser-line"></div>
+          <div class="scanner-crosshair">
+            <div class="corner top-left"></div>
+            <div class="corner top-right"></div>
+            <div class="corner bottom-left"></div>
+            <div class="corner bottom-right"></div>
+            <div class="qr-target-placeholder">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="2" width="8" height="8" rx="1"></rect>
+                <rect x="14" y="2" width="8" height="8" rx="1"></rect>
+                <rect x="2" y="14" width="8" height="8" rx="1"></rect>
+                <path d="M14 14h3v3h-3z"></path>
+                <path d="M20 14v3h-3"></path>
+                <path d="M14 20h6"></path>
+              </svg>
+              <p id="scannerStatusPrompt">Ready to scan attendee badge</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Direct Scanner Controls -->
+        <div class="scan-input-group">
+          <input type="text" id="manualQrInput" placeholder="Enter QR code or select attendee below..."
+            class="form-input" autocomplete="off" />
+          <button class="btn btn-primary" id="btnManualScan">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14"></path>
+              <path d="m12 5 7 7-7 7"></path>
+            </svg>
+            Scan Badge
+          </button>
+        </div>
+
+        <!-- Live Scan Feedback Alert Box -->
+        <div class="scan-feedback-box hidden" id="scanFeedback">
+          <div class="feedback-icon" id="feedbackIcon"></div>
+          <div class="feedback-content">
+            <h4 id="feedbackTitle">Status</h4>
+            <p id="feedbackMessage">Message</p>
+            <div class="feedback-meta" id="feedbackMeta"></div>
+          </div>
+        </div>
+
+        <!-- Edge-Case Simulation Testing Suite Box -->
+        <div class="simulation-lab">
+          <div class="simulation-header">
+            <h3>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path
+                  d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z">
+                </path>
+              </svg>
+              Edge-Case Verification Lab
+            </h3>
+            <span class="sub-pill">Interactive Testing</span>
+          </div>
+
+          <div class="sim-grid">
+            <div class="sim-card">
+              <div class="sim-info">
+                <strong>Duplicate Scan Race</strong>
+                <p>Sends 2 rapid concurrent scans for the same attendee.</p>
+              </div>
+              <button class="btn btn-warning btn-sm" id="btnTestDuplicateScan">
+                Simulate Double Scan
+              </button>
+            </div>
+
+            <div class="sim-card">
+              <div class="sim-info">
+                <strong>Simulate Printer Jam</strong>
+                <p>Forces next print job to report hardware paper jam failure.</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleHardwareFailure">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="sim-card">
+              <div class="sim-info">
+                <strong>Stale / Out-of-Order Webhook</strong>
+                <p>Injects an expired/superseded job callback to prove immunity.</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" id="btnTestStaleWebhook">
+                Inject Stale Callback
+              </button>
+            </div>
+
+            <div class="sim-card">
+              <div class="sim-info">
+                <strong>Tampered HMAC Webhook</strong>
+                <p>Sends webhook with forged signature (expects 401 Unauthorized).</p>
+              </div>
+              <button class="btn btn-danger btn-sm" id="btnTestForgedWebhook">
+                Send Forged Webhook
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Center / Right: Attendees Roster & Real-Time Badge State Machine -->
+      <section class="panel panel-roster">
+        <div class="panel-header">
+          <div class="panel-title-wrap">
+            <span class="panel-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </span>
+            <h2>Conference Attendees Directory</h2>
+          </div>
+          <div class="roster-counters" id="rosterCounters">
+            <span class="counter-badge counter-total">5 Attendees</span>
+            <span class="counter-badge counter-checkedin">0 Checked In</span>
+            <span class="counter-badge counter-pending">0 Pending</span>
+          </div>
+        </div>
+
+        <!-- Attendees Cards Grid -->
+        <div class="attendees-list" id="attendeesList">
+          <!-- Populated dynamically via app.js -->
+        </div>
+
+        <!-- State Machine Legend -->
+        <div class="state-legend">
+          <div class="legend-title">State Machine Reference:</div>
+          <div class="legend-items">
+            <span class="legend-chip state-not_checked_in"><code>NOT_CHECKED_IN</code> (Initial)</span>
+            <span class="legend-arrow">➔</span>
+            <span class="legend-chip state-print_requested"><code>PRINT_REQUESTED</code> (Pending)</span>
+            <span class="legend-arrow">➔</span>
+            <span class="legend-chip state-checked_in"><code>CHECKED_IN</code> (Terminal)</span>
+            <span class="legend-divider">|</span>
+            <span class="legend-chip state-print_failed"><code>PRINT_FAILED</code> (Retryable)</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Bottom Panel: Live Webhook & Queue Event Audit Stream -->
+      <section class="panel panel-logs">
+        <div class="panel-header">
+          <div class="panel-title-wrap">
+            <span class="panel-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+            </span>
+            <h2>Real-Time Hardware & Webhook Audit Stream</h2>
+          </div>
+          <div class="log-actions">
+            <button class="btn btn-ghost btn-xs" id="btnClearLogs">Clear Log</button>
+          </div>
+        </div>
+
+        <div class="log-terminal" id="logTerminal">
+          <div class="log-entry log-entry-system">
+            <span class="log-time">[System Init]</span>
+            <span class="log-badge-system">GATEWAY READY</span>
+            <span class="log-msg">Solstice Kiosk Service online. Listening for scans and printer webhooks.</span>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Badge Inspection Modal (Optional interactive preview) -->
+    <div class="modal-overlay hidden" id="badgeModal">
+      <div class="modal-card">
+        <button class="modal-close" id="btnCloseModal">&times;</button>
+        <div class="badge-physical-card" id="physicalBadgePreview">
+          <!-- Dynamic Badge Card Render -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

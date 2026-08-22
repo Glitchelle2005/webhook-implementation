@@ -1,0 +1,19 @@
+{
+  "name": "kiosk-service",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/runTests.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "amqplib": "^2.0.1",
+    "body-parser": "^2.3.0",
+    "express": "^5.2.1"
+  }
+}
